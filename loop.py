@@ -4,6 +4,8 @@ import gc
 import numpy as np
 from matplotlib import pyplot as plt
 
+# adicionar ao vetor a média de tempo de um laço dentro das iterações
+
 lista_n = [1000, 10000, 100000]
 Y_LIM = {
     1000:   (6e-5,  6.75e-5),

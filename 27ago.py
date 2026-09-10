@@ -1,234 +1,318 @@
+"""
+27ago.py — Validação de Setup Computacional
+============================================================
+Engenharia de Programas — Prof. Dr. Diego Frias
+
+Fluxo (conforme fluxograma do PDF):
+  1. Definir vetor N = [1000, 10000, 100000] e R repetições
+  2. LAÇO EXTERNO — para cada n em N:
+       a. Gerar lista aleatória de tamanho n
+       b. LAÇO INTERNO — R vezes:
+            - medir tempo (t) e memória (m) do loop banal
+       c. Calcular µ, σ e CV_n = σ / µ
+  3. Gerar os 4 plots de validação
+  4. Para cada n: se CV_n ≤ 0.15 → SETUP APROVADO
+
+Critério de aprovação (CV):
+  CV ≤ 0.10          → Excelente — sinal muito limpo
+  0.10 < CV ≤ 0.15  → Aprovado — aceitável para análise
+  CV > 0.15          → Reprovado — ruído excessivo
+"""
+
 import time
 import gc
 import os
-
+import tracemalloc
 import numpy as np
 from matplotlib import pyplot as plt
 
-# Pasta de saída
-OUT_DIR = os.path.join(os.path.dirname(__file__), 'resultados', 'loops')
+# ─── Pasta de saída ────────────────────────────────────────────────────────
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'resultados', 'validacao')
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# FOCA = F(chamada a Função), O(Operação), C(Comparação), A(Atribuição/acesso)
-#
-# O laço  `for i in range(n): x = 1`  tem as seguintes primitivas por iteração:
-#   F = 0  (nenhuma chamada de função dentro do corpo)
-#   O = 0  (nenhuma operação aritmética)
-#   C = 1  (comparação implícita do for: i < n)
-#   A = 2  (atribuição de x = 1  +  incremento i)
-#
-# Por repetição completa (n iterações + overhead do range):
-#   FOCA laço  = (0, 0, n+1, n+2)      ← custo interno do laço
-#   FOCA total = (0, 0, n+1, n+2+n)    ← inclui atribuições extras
-#
-# O script mede o tempo médio desse laço e gera gráficos.
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# PARÂMETROS
+# ═══════════════════════════════════════════════════════════════════════════
+N_LIST     = [1_000, 10_000, 100_000]   # vetor de tamanhos de entrada
+R          = 100                         # repetições por n (laço interno)
+CV_LIMITE  = 0.15                        # critério de aprovação do setup
+SIGMA_CLIP = 2.0                         # sigma-clipping: remove amostras fora de µ2σ
 
-lista_n = [1000, 10000, 100000]
 
-REPETICOES = 100
-WARMUP = 20
+def sigma_clip(t, n_sigma=SIGMA_CLIP, max_iter=5):
+    """
+    Sigma-clipping iterativo: remove amostras fora de µ ± n_sigma*σ.
+    Repete até estabilizar ou atingir max_iter.
+    É o método padrão em benchmarking astronômico/computacional.
+    """
+    t_clean = t.copy()
+    for _ in range(max_iter):
+        mu  = t_clean.mean()
+        sig = t_clean.std()
+        if sig == 0:
+            break
+        mask = np.abs(t_clean - mu) <= n_sigma * sig
+        if mask.all():          # sem mais outliers
+            break
+        t_clean = t_clean[mask]
+    return t_clean
 
-# Vetor para guardar médias FOCA de cada n
-# Cada entrada: {'n': ..., 'media_original': ..., 'foca_1': ..., 'foca_2': ...}
-resultados_foca = []
+# ═══════════════════════════════════════════════════════════════════════════
+# ESTRUTURA PARA GUARDAR RESULTADOS
+#   resultados[n] = {
+#       'tempos':   array com os R tempos medidos (t)
+#       'memorias': array com os R picos de memória medidos (m)
+#       'media':    µ = média dos tempos
+#       'sigma':    σ = desvio padrão dos tempos
+#       'cv':       CV_n = σ / µ
+#   }
+# ═══════════════════════════════════════════════════════════════════════════
+resultados = {}
 
-for n in lista_n:
-    print(f"\n{'='*60}")
-    print(f"  n = {n}")
-    print(f"{'='*60}")
+print("=" * 60)
+print("  VALIDAÇÃO DE SETUP COMPUTACIONAL")
+print(f"  N = {N_LIST}  |  R = {R} repetições  |  CV limite = {CV_LIMITE}")
+print("=" * 60)
 
-    # --- Aquecimento: estabilizar caches, branch predictor, etc. ---
-    for _ in range(WARMUP):
-        for i in range(n):
-            x = 1
+# ═══════════════════════════════════════════════════════════════════════════
+# LAÇO EXTERNO — para cada n no vetor N
+# ═══════════════════════════════════════════════════════════════════════════
+for n in N_LIST:
+    print(f"\n{'─'*60}")
+    print(f"  n = {n:,}")
+    print(f"{'─'*60}")
 
-    # -------------------------------------------------------------------
-    # 1) Medição do loop original: for i in range(n): x = 1
-    # -------------------------------------------------------------------
-    tt = []
+    # ── Aquecimento adaptativo (menos iterações para n grandes) ────────────────
+    # Para n grandes o aquecimento demora muito e pode aquecer a CPU
+    warmup_iters = max(5, 20 - n // 10_000)   # 20 para n=1k, 19 para 10k, 10 para 100k
+    for _ in range(warmup_iters):
+        _lista = list(np.random.randint(0, 10_000, size=n))
+        for _i in range(n):
+            _x = 1
+
+    # ── Vetores de medição ──────────────────────────────────────────────────
+    t = []   # t[r] = tempo da r-ésima repetição (segundos)
+    m = []   # m[r] = pico de memória da r-ésima repetição (bytes)
+
     gc_old = gc.isenabled()
-    gc.disable()
+    gc.disable()   # desativa GC para não interferir na medição
     try:
-        for _ in range(REPETICOES):
+        # ── LAÇO INTERNO — R repetições ──────────────────────────────────────
+        for _ in range(R):
+
+            # a) Gerar lista aleatória de tamanho n
+            lista = list(np.random.randint(0, 10_000, size=n))
+
+            # b) Medir tempo (t) e memória (m) do loop banal
+            tracemalloc.start()
             tic = time.perf_counter()
-            for i in range(n):
+
+            for i in range(n):   # loop banal — primitiva sendo medida
                 x = 1
+
             toc = time.perf_counter()
-            tt.append(toc - tic)
+            _, mem_pico = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+            t.append(toc - tic)
+            m.append(mem_pico)
+
+            # (Removido sleep que causava queda de C-state do processador)
+
     finally:
         if gc_old:
             gc.enable()
 
-    tt = np.array(tt)
-    media = tt.mean()
-    sigma = tt.std()
-    cv = sigma / media
+    t = np.array(t)
+    m = np.array(m)
 
-    # -------------------------------------------------------------------
-    # 2) Medições FOCA adicionais
-    #    FOCA-1: range(n + 5)        → laço um pouco maior
-    #    FOCA-2: range(2*n + 5)      → laço ~dobro do tamanho
-    # -------------------------------------------------------------------
-    foca_labels = [f'range({n}+5)', f'range(2*{n}+5)']
-    foca_ranges = [n + 5, 2 * n + 5]
-    foca_medias = []
+    # ── c) Calcular µ, σ e CV_n — sigma-clipping iterativo (±2σ) ─────────────
+    # Remove amostras fora de µ ± 2σ de forma iterativa.
+    # Mais robusto que percentil fixo: converge para o cluster de medidas estáveis.
+    t_filtrado = sigma_clip(t)
 
-    for foca_n in foca_ranges:
-        foca_tt = []
-        gc_old_f = gc.isenabled()
-        gc.disable()
-        try:
-            for _ in range(REPETICOES):
-                tic = time.perf_counter()
-                for i in range(foca_n):
-                    x = 1
-                toc = time.perf_counter()
-                foca_tt.append(toc - tic)
-        finally:
-            if gc_old_f:
-                gc.enable()
-        foca_medias.append(np.mean(foca_tt))
+    media = t_filtrado.mean()
+    sigma = t_filtrado.std()
+    cv_n  = sigma / media if media > 0 else float('nan')
 
-    resultados_foca.append({
-        'n': n,
-        'media_original': media,
-        'foca_1': foca_medias[0],
-        'foca_2': foca_medias[1],
-    })
+    if cv_n <= 0.10:
+        status = "✅ EXCELENTE"
+    elif cv_n <= CV_LIMITE:
+        status = "✅ APROVADO"
+    else:
+        status = "❌ REPROVADO"
 
-    # --- Estatísticas ---
-    p2 = np.percentile(tt, 2)
-    p5 = np.percentile(tt, 5)
-    p95 = np.percentile(tt, 95)
-    p98 = np.percentile(tt, 98)
+    resultados[n] = {
+        'tempos':    t,            # todos os tempos brutos (para o scatter)
+        't_filtrado': t_filtrado,  # tempos sem outliers (para histograma/stats)
+        'memorias':  m,
+        'media':     media,
+        'sigma':     sigma,
+        'cv':        cv_n,
+        'n_outliers': len(t) - len(t_filtrado),
+    }
 
-    outliers_2 = (tt < media - 2 * sigma) | (tt > media + 2 * sigma)
-    outliers_3 = (tt < media - 3 * sigma) | (tt > media + 3 * sigma)
+    print(f"  Amostras brutas:   {len(t)}")
+    print(f"  Outliers removidos: {len(t) - len(t_filtrado)} (sigma-clipping ±{SIGMA_CLIP}σ)")
+    print(f"  µ  = {media:.8f} s")
+    print(f"  σ  = {sigma:.8f} s")
+    print(f"  CV = {cv_n:.4%}  →  {status}")
+    print(f"  Memória pico média = {m.mean() / 1024:.2f} KB")
 
-    print(f"  média  = {media:.8f} s")
-    print(f"  σ      = {sigma:.8f} s")
-    print(f"  CV     = {cv:.4%}")
-    print(f"  FOCA-1 (n+5)   média = {foca_medias[0]:.8f} s")
-    print(f"  FOCA-2 (2n+5)  média = {foca_medias[1]:.8f} s")
-    print(f"  outliers 2σ ({outliers_2.sum()}): {tt[outliers_2]}")
-    print(f"  outliers 3σ ({outliers_3.sum()}): {tt[outliers_3]}")
-    print(f"  percentis: p2={p2:.8f}  p5={p5:.8f}  p95={p95:.8f}  p98={p98:.8f}")
 
-    # ===================================================================
-    # GRÁFICO 1: Série temporal (tempo por iteração)
-    # ===================================================================
-    # Y_LIM calculado automaticamente a partir dos dados (resolve gráfico vazio)
-    margem = 0.15 * (tt.max() - tt.min()) if tt.max() != tt.min() else tt.mean() * 0.1
-    ylim_auto = (tt.min() - margem, tt.max() + margem)
+# ═══════════════════════════════════════════════════════════════════════════
+# PLOTS DE VALIDAÇÃO
+# ═══════════════════════════════════════════════════════════════════════════
+print(f"\n{'='*60}")
+print("  GERANDO PLOTS DE VALIDAÇÃO")
+print(f"{'='*60}")
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(range(len(tt)), tt, linestyle='-', color='tab:blue', linewidth=1.2,
-            marker='o', markersize=3, alpha=0.8, label='Tempo por repetição')
+CORES  = {1_000: 'tab:blue', 10_000: 'tab:orange', 100_000: 'tab:green'}
+LABELS = {n: f'n = {n:,}' for n in N_LIST}
+x_pos  = np.arange(len(N_LIST))
 
-    ax.axhline(media, color='green', linestyle='-', linewidth=1.4, alpha=0.9,
-               label=f'µ = {media:.6f}')
-    ax.axhline(media + 2 * sigma, color='teal', linestyle=':', linewidth=1,
-               label=f'µ±2σ')
-    ax.axhline(media - 2 * sigma, color='teal', linestyle=':', linewidth=1, alpha=0.7)
-    ax.axhline(media + 3 * sigma, color='darkmagenta', linestyle='-.', linewidth=1,
-               label=f'µ±3σ')
-    ax.axhline(media - 3 * sigma, color='darkmagenta', linestyle='-.', linewidth=1,
-               alpha=0.7)
+# ───────────────────────────────────────────────────────────────────────────
+# PLOT 1 — Scatter Plot: Dispersão Total dos Tempos
+#   Mostra todos os R tempos para cada n.
+#   Identifica outliers e tendências de throttling térmico.
+# ───────────────────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(12, 5))
 
-    # Faixa ±1σ sombreada
-    ax.fill_between(range(len(tt)), media - sigma, media + sigma,
-                    color='green', alpha=0.08, label='±1σ')
+for n in N_LIST:
+    tt       = resultados[n]['tempos']       # todos os pontos brutos
+    t_filt   = resultados[n]['t_filtrado']   # amostras após sigma-clipping
+    mu       = resultados[n]['media']
+    # Identificar quais pontos brutos foram mantidos pelo sigma-clipping
+    mask_ok  = np.isin(tt, t_filt)
+    ax.scatter(np.where(mask_ok)[0],  tt[mask_ok],  s=14, alpha=0.65,
+               color=CORES[n], label=LABELS[n])
+    # Outliers marcados com X vermelho
+    ax.scatter(np.where(~mask_ok)[0], tt[~mask_ok], s=40, alpha=0.9,
+               color='red', marker='x', zorder=5,
+               label=f'outliers n={n:,} ({(~mask_ok).sum()})')
+    ax.axhline(mu, color=CORES[n], linestyle='--', linewidth=1.2,
+               label=f'µ n={n:,} = {mu:.2e}s')
 
-    if outliers_3.any():
-        idx = np.where(outliers_3)[0]
-        ax.scatter(idx, tt[idx], color='darkmagenta', s=40, zorder=5,
-                   marker='x', label=f'outliers 3σ ({len(idx)})')
-    if outliers_2.any():
-        idx = np.where(outliers_2 & ~outliers_3)[0]
-        if len(idx) > 0:
-            ax.scatter(idx, tt[idx], color='teal', s=30, zorder=5,
-                       marker='x', label=f'outliers 2σ ({len(idx)})')
+ax.set_xlabel('Repetição (r)')
+ax.set_ylabel('Tempo (s)')
+ax.set_title(f'Plot 1 — Scatter: Dispersão Total dos Tempos  (R = {R} repetições)')
+ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+ax.legend(fontsize=8, ncol=2)
+fig.tight_layout()
+caminho = os.path.join(OUT_DIR, 'plot1_scatter.png')
+fig.savefig(caminho, dpi=150)
+plt.close(fig)
+print(f"  → Plot 1 salvo: {caminho}")
 
-    ax.set_ylim(ylim_auto)
-    ax.set_ylabel('Tempo (s)')
-    ax.set_xlabel('Repetição')
-    ax.set_title(f'n = {n} — µ={media:.6f}s  σ={sigma:.6f}s  CV={cv:.2%} ({REPETICOES} reps)')
-    ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 0), useMathText=True)
-    ax.yaxis.get_offset_text().set_fontsize(8)
-    ax.legend(fontsize=6, loc='upper right', ncol=2)
-    fig.tight_layout()
-    caminho = os.path.join(OUT_DIR, f'tempo_n_{n}.png')
-    fig.savefig(caminho, dpi=150)
-    print(f'  → Gráfico salvo: {caminho}')
-    plt.close(fig)
-
-    # ===================================================================
-    # GRÁFICO 2: Histograma (foco na região mais frequente)
-    # ===================================================================
-    # Limita o eixo X aos percentis 2–98 para focar nos tempos mais frequentes
-    margem = 0.15 * (p98 - p2) if p98 != p2 else media * 0.05
-    xlim_lo = p2 - margem
-    xlim_hi = p98 + margem
-
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.hist(tt, bins='fd', edgecolor='black', color='skyblue',
-            linewidth=0.6, alpha=0.85)
-    ax.axvline(media, color='red', linestyle='--', linewidth=1.3,
-               label=f'µ = {media:.8f} s')
-    ax.axvline(media + sigma, color='orange', linestyle=':', linewidth=1.1,
-               label='µ ± 1σ')
-    ax.axvline(media - sigma, color='orange', linestyle=':', linewidth=1.1)
-    ax.axvline(media + 2 * sigma, color='teal', linestyle=':', linewidth=1,
-               label='µ ± 2σ')
-    ax.axvline(media - 2 * sigma, color='teal', linestyle=':', linewidth=1)
-
-    ax.set_xlim(xlim_lo, xlim_hi)
-    ax.set_ylabel('Frequência')
-    ax.set_xlabel('Tempo (s)')
-    ax.set_title(f'Histograma — n = {n} ({len(tt)} amostras)')
-    ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-    ax.legend(fontsize=8)
-    fig.tight_layout()
-    caminho = os.path.join(OUT_DIR, f'hist_n_{n}.png')
-    fig.savefig(caminho, dpi=150)
-    print(f'  → Gráfico salvo: {caminho}')
-    plt.close(fig)
-
-# ===================================================================
-# GRÁFICO 3: Comparação das médias FOCA por n (gráfico de barras)
-# ===================================================================
+# ───────────────────────────────────────────────────────────────────────────
+# PLOT 2 — Histogramas Sobrepostos: Distribuição dos Tempos
+#   Mostra a densidade de frequência para cada n sobrepostos.
+#   "Sinos" estreitos e bem separados = setup estável.
+#   Muita sobreposição entre ns = instabilidade.
+# ───────────────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 5))
-x_pos = np.arange(len(lista_n))
-largura = 0.25
 
-barras_orig = [r['media_original'] for r in resultados_foca]
-barras_f1   = [r['foca_1'] for r in resultados_foca]
-barras_f2   = [r['foca_2'] for r in resultados_foca]
+for n in N_LIST:
+    tt = resultados[n]['t_filtrado']    # usa os dados já filtrados
+    mu = resultados[n]['media']
+    ax.hist(tt, bins='fd', alpha=0.55, color=CORES[n], edgecolor='black',
+            linewidth=0.4, label=LABELS[n])
+    ax.axvline(mu, color=CORES[n], linestyle='--', linewidth=1.5,
+               label=f'µ = {mu:.2e}s')
 
-ax.bar(x_pos - largura, barras_orig, largura, label='Original (n)', color='tab:blue')
-ax.bar(x_pos,           barras_f1,   largura, label='FOCA-1 (n+5)', color='tab:orange')
-ax.bar(x_pos + largura, barras_f2,   largura, label='FOCA-2 (2n+5)', color='tab:green')
+ax.set_xlabel('Tempo (s)')
+ax.set_ylabel('Frequência')
+ax.set_title(f'Plot 2 — Histogramas Sobrepostos  ({R} amostras por n)')
+ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+ax.legend(fontsize=8, ncol=2)
+fig.tight_layout()
+caminho = os.path.join(OUT_DIR, 'plot2_histogramas.png')
+fig.savefig(caminho, dpi=150)
+plt.close(fig)
+print(f"  → Plot 2 salvo: {caminho}")
+
+# ───────────────────────────────────────────────────────────────────────────
+# PLOT 3 — Barras: µ (média) vs σ (desvio padrão) por n
+#   A barra de σ deve ser VISIVELMENTE menor que a de µ.
+#   Picos acentuados de σ indicam gargalos ou trocas de contexto elevadas.
+# ───────────────────────────────────────────────────────────────────────────
+medias = [resultados[n]['media'] for n in N_LIST]
+sigmas = [resultados[n]['sigma'] for n in N_LIST]
+largura = 0.35
+
+fig, ax = plt.subplots(figsize=(9, 5))
+ax.bar(x_pos - largura / 2, medias, largura,
+       label='µ — Tempo Médio', color='tab:blue', edgecolor='black', linewidth=0.6)
+ax.bar(x_pos + largura / 2, sigmas, largura,
+       label='σ — Desvio Padrão', color='tab:orange', edgecolor='black', linewidth=0.6)
 
 ax.set_xticks(x_pos)
-ax.set_xticklabels([str(n) for n in lista_n])
-ax.set_xlabel('n')
-ax.set_ylabel('Tempo médio (s)')
-ax.set_title('Comparação FOCA — Tempo médio por variante de loop')
-ax.legend()
-ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 0), useMathText=True)
+ax.set_xticklabels([f'n = {n:,}' for n in N_LIST])
+ax.set_ylabel('Tempo (s)')
+ax.set_title('Plot 3 — µ vs σ por n  (σ deve ser muito menor que µ)')
+ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+ax.legend(fontsize=9)
 fig.tight_layout()
-caminho = os.path.join(OUT_DIR, 'foca_comparacao.png')
+caminho = os.path.join(OUT_DIR, 'plot3_media_sigma.png')
 fig.savefig(caminho, dpi=150)
-print(f'\n→ Gráfico FOCA salvo: {caminho}')
 plt.close(fig)
+print(f"  → Plot 3 salvo: {caminho}")
 
-# --- Resumo final ---
-print("\n" + "="*60)
-print("  RESUMO FOCA (médias em segundos)")
-print("="*60)
-print(f"  {'n':>8}  {'Original':>12}  {'FOCA-1(n+5)':>14}  {'FOCA-2(2n+5)':>14}")
-for r in resultados_foca:
-    print(f"  {r['n']:>8}  {r['media_original']:>12.8f}  {r['foca_1']:>14.8f}  {r['foca_2']:>14.8f}")
+# ───────────────────────────────────────────────────────────────────────────
+# PLOT 4 — Barras: Coeficiente de Variação (CV) por n
+#   CV = σ / µ  para cada n.
+#   Linha vermelha em 0.15 = limite de aprovação.
+#   Barras verdes = APROVADO | Barras vermelhas = REPROVADO
+# ───────────────────────────────────────────────────────────────────────────
+cvs       = [resultados[n]['cv'] for n in N_LIST]
+cores_cv  = ['tab:green' if cv <= CV_LIMITE else 'tab:red' for cv in cvs]
+
+fig, ax = plt.subplots(figsize=(9, 5))
+bars = ax.bar(x_pos, cvs, 0.5, color=cores_cv, edgecolor='black', linewidth=0.7)
+
+ax.axhline(CV_LIMITE, color='red', linestyle='--', linewidth=2.0,
+           label=f'Limite CV = {CV_LIMITE}  (15%)')
+ax.bar_label(bars, fmt='%.4f', fontsize=10, padding=4)
+
+ax.set_xticks(x_pos)
+ax.set_xticklabels([f'n = {n:,}' for n in N_LIST])
+ax.set_ylabel('CV = σ / µ')
+ax.set_title('Plot 4 — Coeficiente de Variação por n  (verde = aprovado)')
+ax.set_ylim(0, max(max(cvs) * 1.4, CV_LIMITE * 1.8))
+ax.legend(fontsize=9)
+fig.tight_layout()
+caminho = os.path.join(OUT_DIR, 'plot4_cv.png')
+fig.savefig(caminho, dpi=150)
+plt.close(fig)
+print(f"  → Plot 4 salvo: {caminho}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PARECER TÉCNICO CONCLUSIVO
+# ═══════════════════════════════════════════════════════════════════════════
+print(f"\n{'='*60}")
+print("  PARECER TÉCNICO CONCLUSIVO")
+print(f"{'='*60}")
+print(f"\n  {'n':>10}  {'µ (s)':>14}  {'σ (s)':>14}  {'CV':>9}  Status")
+print(f"  {'─'*10}  {'─'*14}  {'─'*14}  {'─'*9}  {'─'*12}")
+
+for n in N_LIST:
+    r = resultados[n]
+    cv = r['cv']
+    if cv <= 0.10:
+        status = "✅ EXCELENTE"
+    elif cv <= CV_LIMITE:
+        status = "✅ APROVADO"
+    else:
+        status = "❌ REPROVADO"
+    print(f"  {n:>10,}  {r['media']:>14.8f}  {r['sigma']:>14.8f}  {cv:>9.4%}  {status}")
+
+aprovados = sum(1 for n in N_LIST if resultados[n]['cv'] <= CV_LIMITE)
+print()
+if aprovados == len(N_LIST):
+    print("  ✅ SETUP APROVADO — CV ≤ 0.15 para todos os valores de n.")
+    print("  O ambiente é estável e reprodutível para análise de algoritmos.")
+else:
+    print(f"  ❌ SETUP REPROVADO — {len(N_LIST) - aprovados} n(s) com CV > 0.15.")
+    print("  Feche processos em background e repita a calibração.")
 print()

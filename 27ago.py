@@ -149,6 +149,7 @@ for n in N_LIST:
         'media':     media,
         'sigma':     sigma,
         'cv':        cv_n,
+        'media_por_elemento': media / n if n else float('nan'),  # tempo médio = µ / n
         'n_outliers': len(t) - len(t_filtrado),
     }
 
@@ -157,6 +158,7 @@ for n in N_LIST:
     print(f"  µ  = {media:.8f} s")
     print(f"  σ  = {sigma:.8f} s")
     print(f"  CV = {cv_n:.4%}  →  {status}")
+    print(f"  tempo médio (por elemento) = {media / n:.4e} s  ({media / n * 1e9:.2f} ns)  [µ / n]")
     print(f"  Memória pico média = {m.mean() / 1024:.2f} KB")
 
 
@@ -205,26 +207,28 @@ plt.close(fig)
 print(f"  → Plot 1 salvo: {caminho}")
 
 # ───────────────────────────────────────────────────────────────────────────
-# PLOT 2 — Histogramas Sobrepostos: Distribuição dos Tempos
-#   Mostra a densidade de frequência para cada n sobrepostos.
-#   "Sinos" estreitos e bem separados = setup estável.
-#   Muita sobreposição entre ns = instabilidade.
+# PLOT 2 — Gráfico de Linha: Tempo Médio x Tamanho da Entrada
+#   Mostra a relação entre o tempo médio (µ) e o tamanho da entrada n.
+#   Permite visualizar a escalabilidade do setup.
 # ───────────────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 5))
 
-for n in N_LIST:
-    tt = resultados[n]['t_filtrado']    # usa os dados já filtrados
-    mu = resultados[n]['media']
-    ax.hist(tt, bins='fd', alpha=0.55, color=CORES[n], edgecolor='black',
-            linewidth=0.4, label=LABELS[n])
-    ax.axvline(mu, color=CORES[n], linestyle='--', linewidth=1.5,
-               label=f'µ = {mu:.2e}s')
+ns = np.array(N_LIST)
+medias = np.array([resultados[n]['media'] for n in N_LIST])
 
-ax.set_xlabel('Tempo (s)')
-ax.set_ylabel('Frequência')
-ax.set_title(f'Plot 2 — Histogramas Sobrepostos  ({R} amostras por n)')
-ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-ax.legend(fontsize=8, ncol=2)
+ax.plot(ns, medias, 'o-', color='tab:blue', linewidth=2, markersize=8, label='Tempo Médio (µ)')
+for n, mu in zip(N_LIST, medias):
+    ax.annotate(f'{mu:.2e}s', (n, mu), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
+
+ax.set_xlabel('Tamanho da Entrada (n)')
+ax.set_ylabel('Tempo Médio (s)')
+ax.set_title('Plot 2 — Gráfico de Linha: Tempo Médio x Tamanho da Entrada')
+ax.set_xscale('log')
+ax.set_xticks(N_LIST)
+ax.set_xticklabels([f'{n:,}' for n in N_LIST])
+ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+ax.grid(True, which='both', linestyle='--', alpha=0.5)
+ax.legend(fontsize=9)
 fig.tight_layout()
 caminho = os.path.join(OUT_DIR, 'plot2_histogramas.png')
 fig.savefig(caminho, dpi=150)
@@ -293,8 +297,8 @@ print(f"  → Plot 4 salvo: {caminho}")
 print(f"\n{'='*60}")
 print("  PARECER TÉCNICO CONCLUSIVO")
 print(f"{'='*60}")
-print(f"\n  {'n':>10}  {'µ (s)':>14}  {'σ (s)':>14}  {'CV':>9}  Status")
-print(f"  {'─'*10}  {'─'*14}  {'─'*14}  {'─'*9}  {'─'*12}")
+print(f"\n  {'n':>10}  {'µ (s)':>14}  {'σ (s)':>14}  {'tempo médio (s)':>17}  {'CV':>9}  Status")
+print(f"  {'─'*10}  {'─'*14}  {'─'*14}  {'─'*17}  {'─'*9}  {'─'*12}")
 
 for n in N_LIST:
     r = resultados[n]
@@ -305,7 +309,8 @@ for n in N_LIST:
         status = "✅ APROVADO"
     else:
         status = "❌ REPROVADO"
-    print(f"  {n:>10,}  {r['media']:>14.8f}  {r['sigma']:>14.8f}  {cv:>9.4%}  {status}")
+    print(f"  {n:>10,}  {r['media']:>14.8f}  {r['sigma']:>14.8f}  {r['media_por_elemento']:>17.4e}  {cv:>9.4%}  {status}")
+print(f"  (tempo médio = µ / n, ou seja, tempo por elemento da iteração)")
 
 aprovados = sum(1 for n in N_LIST if resultados[n]['cv'] <= CV_LIMITE)
 print()

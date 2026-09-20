@@ -1,0 +1,259 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[a4paper,top=2.35cm,bottom=1.7cm,left=2cm,right=2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,tabularx}
+\usepackage{enumitem}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\pagestyle{plain}
+\renewcommand{\arraystretch}{1.05}
+
+\newcommand{\linha}[1]{\rule{#1}{0.4pt}}
+\newcommand{\codigo}[1]{\texttt{#1}}
+\newcommand{\secaotitulo}[2]{%
+  \noindent\begin{tabular}{@{}p{0.7cm}p{15.9cm}@{}}
+  #1. & \large\MakeUppercase{#2}
+  \end{tabular}\par
+}
+\newcommand{\subsecaotitulo}[2]{%
+  \noindent\begin{tabular}{@{}p{0.9cm}p{15.7cm}@{}}
+  #1. & \large #2
+  \end{tabular}\par
+}
+\newcommand{\cabecalhocalibracao}[1]{%
+  \toprule
+  {\scriptsize\textnormal{Operação e Tipagem Exata}} &
+  {\scriptsize$\mu_{bruta}$} & {\scriptsize$\sigma_{bruta}$} & {\scriptsize$CV_{bruto}$} &
+  {\scriptsize$\mu_{fil}(#1)$} & {\scriptsize$\sigma_{fil}$} & {\scriptsize$CV_{fil}<0.15$}\\
+  \midrule
+}
+
+\begin{document}
+
+\begin{center}
+  {\Large RELATÓRIO TÉCNICO-CIENTÍFICO DE CALIBRAÇÃO\par}
+  {\Large EMPÍRICA\par}
+  \vspace{0.35cm}
+  {\large Engenharia de Programa 2026.2 / Prof. Diego Frias\par}
+  \vspace{0.15cm}
+  {\large Paradigma F.O.C.A. (Custo Estimado de Operações Primitivas)\par}
+\end{center}
+
+\vspace{0.85cm}
+
+\noindent Nome da Equipe (Fantasia): \linha{11.3cm}
+
+\vspace{0.28cm}
+\noindent Aluno 1: Sophia Lima \linha{11.45cm}\hfill (Responsável por $\tau_a$)
+
+\noindent Aluno 2: Isabel Costa \linha{11.45cm}\hfill (Responsável por $\tau_c$)
+
+\noindent Aluno 3: Sophia Lima e Isabel Costa \linha{11.45cm}\hfill (Responsável por $\tau_o$)
+
+\vspace{0.42cm}
+\hrule
+\vspace{0.42cm}
+
+\textbf{Objetivo Central:} Executar a medição empírica, filtragem estatística de \textit{outliers} e homologação dos
+custos de tempo ($\tau_o,\tau_c,\tau_a$) e funções isoladas ($F$), garantindo a estabilidade do ambiente ($CV<0.15$)
+para uso nas análises estáticas de complexidade.
+
+\vspace{0.62cm}
+\secaotitulo{1}{Especificação Rigorosa do Ambiente Computacional (Setup)}
+
+\vspace{0.35cm}
+\textit{Regra: O grupo deverá eleger uma única máquina para rodar todos os experimentos. Medições reali-
+zadas em máquinas diferentes invalidarão a matriz F.O.C.A. da equipe.}
+
+\vspace{0.38cm}
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}X X@{}}
+\toprule
+Parâmetro Físico / Lógico & Especificação Detalhada (Preenchimento Obrigatório)\\
+\midrule
+Processador (Modelo Exato) & 13th Gen Intel(R) Core(TM) i7-1355U \\
+Frequência Base e Turbo Boost & Base: 400 MHz (mín) / Turbo Boost: até 5000 MHz (5.0 GHz) \\
+Arquitetura de Cache (L1, L2, L3) & L1d: 352 KiB (10×) · L1i: 576 KiB (10×) · L2: 6,5 MiB (4×) · L3: 12 MiB (1×) \\
+Memória RAM (Capacidade/Freq.) & 15 GiB total (DDR5/LPDDR5, freq. não detectada — típ. 5200/6400 MHz para i7-1355U) \\
+Sistema Operacional e Kernel & Ubuntu 24.04.3 LTS · Kernel 7.0.0-31-generic\\
+Plano de Energia do SO & balanced (power-profiles-daemon) \\
+Versão Exata da Linguagem & 3.12.3 \\ 
+\bottomrule
+\end{tabularx}
+
+\vspace{0.62cm}
+\secaotitulo{2}{Parâmetros Metodológicos do Experimento}
+
+\vspace{0.35cm}
+\textit{Regra: Documentar os hiperparâmetros estatísticos e algorítmicos utilizados na captura.}
+
+\vspace{0.38cm}
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}X >{\centering\arraybackslash}p{1.4cm} X@{}}
+\toprule
+Parâmetro de Captura & Valor & Justificativa Técnica\\
+\midrule
+Tamanho da Amostra Interna ($n$) & 10.000 iterações & Garante estabilidade estatística por medição; número suficiente para capturar variações de clock e cache \\
+Número de Repetições Globais ($r$) & 300 repetições & Confiabilidade da média amostral; permite aplicação do filtro IQR com boa resolução \\
+Estratégia de Filtro de Outliers & IQR (Percentis 25--75) com fator 3,0 & Método robusto, imune à magnitude de outliers. Baseado no filtro de Percentis/IQR (não paramétrico). Se IQR=0, usa percentis 2,5--97,5 como fallback. Justificado no PDF ``Filtragem de Outliers em Engenharia de Programas'' \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.62cm}
+\secaotitulo{3}{Painel Gráfico de Estabilidade (Exigência Visual)}
+
+\vspace{0.35cm}
+Para cada \textbf{macro-primitiva} avaliada, o responsável deverá anexar (no final deste documento) um
+painel contendo exatamente 3 gráficos gerados a partir do script de calibração:
+
+\newpage
+
+\begin{enumerate}[leftmargin=0.9cm,itemsep=0.45cm,topsep=0pt]
+  \item \textbf{Gráfico de Dispersão Temporizada:} Eixo X (Iteração $r$) vs Eixo Y (Tempo Acumulado/Médio). Evidenciar picos anômalos (SO / Garbage Collector).
+  \item \textbf{Histograma de Dados Brutos:} Frequência mostrando assimetria e caudas longas (Thermal Throttling / Cache Misses).
+  \item \textbf{Histograma Pós-Filtragem:} Distribuição após aplicação do filtro (Percentil ou $\sigma$), com linhas de corte visíveis. Deve tender à normalidade.
+\end{enumerate}
+
+\newpage
+
+\secaotitulo{4}{Matrizes Exaustivas de Calibração ($\tau$)}
+
+\vspace{0.35cm}
+\textit{Instrução: Preencham as matrizes convertendo os tempos brutos em filtrados. O cálculo do CV deve
+seguir a fórmula $CV=\frac{\sigma}{\mu}$. Apenas linhas com \textbf{CV Filtrado $<0.15$} são homologadas.}
+
+\vspace{0.55cm}
+\subsecaotitulo{4.1}{Custo de Atribuições ($\tau_a$) - Responsável: Aluno 1}
+
+\vspace{0.55cm}
+{\footnotesize
+\begin{tabularx}{\textwidth}{@{}X >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.15cm} >{\centering\arraybackslash}p{1.35cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.75cm}@{}}
+\cabecalhocalibracao{\tau_a}
+\codigo{var\_int $\leftarrow$ cte\_int} (ex: $a=5$) & 9.28e-06 & 2.57e-07 & 0.0277 & 9.28e-06 & 2.57e-07 & \checkmark \\
+\codigo{var\_float $\leftarrow$ cte\_float} & 9.70e-06 & 1.74e-07 & 0.0179 & 9.70e-06 & 1.74e-07 & \checkmark \\
+\codigo{var\_bool $\leftarrow$ cte\_bool} & 9.34e-06 & 1.45e-07 & 0.0156 & 9.34e-06 & 1.45e-07 & \checkmark \\
+\codigo{var\_int $\leftarrow$ var\_int} (ex: $a=b$) & 9.64e-06 & 3.51e-07 & 0.0364 & 9.64e-06 & 3.51e-07 & \checkmark \\
+\codigo{var\_float $\leftarrow$ var\_float} & 9.81e-06 & 1.81e-07 & 0.0184 & 9.81e-06 & 1.81e-07 & \checkmark \\
+\bottomrule
+\end{tabularx}}
+
+\vspace{0.55cm}
+\subsecaotitulo{4.2}{Custo de Comparações ($\tau_c$) - Responsável: Aluno 2}
+
+\vspace{0.55cm}
+{\footnotesize
+\begin{tabularx}{\textwidth}{@{}X >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.15cm} >{\centering\arraybackslash}p{1.35cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.75cm}@{}}
+\cabecalhocalibracao{\tau_c}
+Igualdade: \codigo{cte\_int == cte\_int} & 5.53e-06 & 7.24e-07 & 0.1309 & 5.53e-06 & 7.24e-07 & \checkmark \\
+Igualdade: \codigo{var\_int == cte\_int} & 1.10e-05 & 1.04e-06 & 0.0944 & 1.10e-05 & 1.04e-06 & \checkmark \\
+Igualdade: \codigo{var\_int == var\_int} & 1.09e-05 & 6.04e-07 & 0.0554 & 1.09e-05 & 6.04e-07 & \checkmark \\
+Igualdade: \codigo{var\_float == var\_float} & 6.87e-06 & 4.16e-07 & 0.0607 & 6.87e-06 & 4.16e-07 & \checkmark \\
+Desigualdade: \codigo{var\_int != var\_int} & 1.08e-05 & 1.98e-07 & 0.0183 & 1.08e-05 & 1.98e-07 & \checkmark \\
+Relacional: \codigo{var\_int > var\_int} & 1.14e-05 & 1.57e-06 & 0.1377 & 1.14e-05 & 1.57e-06 & \checkmark \\
+Relacional: \codigo{var\_float < cte\_float} & 1.07e-05 & 2.54e-07 & 0.0237 & 1.07e-05 & 2.54e-07 & \checkmark \\
+\bottomrule
+\end{tabularx}}
+
+\vspace{0.55cm}
+\subsecaotitulo{4.3}{Custo de Operações Matemáticas ($\tau_o$) - Responsável: Aluno 3}
+
+\vspace{0.55cm}
+{\footnotesize
+\begin{tabularx}{\textwidth}{@{}X >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.15cm} >{\centering\arraybackslash}p{1.35cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.75cm}@{}}
+\cabecalhocalibracao{\tau_o}
+\textbf{Soma Int:} \codigo{var\_int + cte\_int} & 1.00e-05 & 3.00e-07 & 0.0301 & 1.00e-05 & 3.00e-07 & \checkmark \\
+\textbf{Soma Int:} \codigo{var\_int + var\_int} & 1.04e-05 & 2.78e-07 & 0.0268 & 1.04e-05 & 2.78e-07 & \checkmark \\
+\textbf{Soma Float:} \codigo{var\_float + var\_float} & 6.66e-06 & 7.96e-07 & 0.1195 & 6.66e-06 & 7.96e-07 & \checkmark \\
+\textbf{Subtração Int:} \codigo{var\_int - var\_int} & 6.53e-06 & 5.51e-07 & 0.0843 & 6.53e-06 & 5.51e-07 & \checkmark \\
+\textbf{Multiplicação Int:} \codigo{var\_int * var\_int} & 1.01e-05 & 2.09e-07 & 0.0207 & 1.01e-05 & 2.09e-07 & \checkmark \\
+\textbf{Mult. Float:} \codigo{var\_float * var\_float} & 1.02e-05 & 7.71e-07 & 0.0757 & 1.02e-05 & 7.71e-07 & \checkmark \\
+\textbf{Divisão Float:} \codigo{var\_float / var\_float} & 1.00e-05 & 2.50e-07 & 0.0250 & 1.00e-05 & 2.50e-07 & \checkmark \\
+\textbf{Divisão Int (Piso):} \codigo{var\_int // var\_int} & 1.01e-05 & 2.25e-07 & 0.0223 & 1.01e-05 & 2.25e-07 & \checkmark \\
+\textbf{Módulo (Resto):} \codigo{var\_int \% var\_int} & 9.93e-06 & 2.13e-07 & 0.0214 & 9.93e-06 & 2.13e-07 & \checkmark \\
+\bottomrule
+\end{tabularx}}
+
+\newpage
+
+\subsecaotitulo{4.4}{Custo de Coleção de Funções Opacas ($F$) - Responsável: Equipe (Opcional + 1 ponto extra}
+
+\vspace{0.55cm}
+{\footnotesize
+\begin{tabularx}{\textwidth}{@{}X >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.15cm} >{\centering\arraybackslash}p{1.35cm} >{\centering\arraybackslash}p{0.95cm} >{\centering\arraybackslash}p{1.75cm}@{}}
+\toprule
+{\scriptsize\textnormal{Função (Biblioteca/Nativa)}} &
+{\scriptsize$\mu_{bruta}$} & {\scriptsize$\sigma_{bruta}$} & {\scriptsize$CV_{bruto}$} &
+{\scriptsize$\mu_{fil}(\tau_f)$} & {\scriptsize$\sigma_{fil}$} & {\scriptsize$CV_{fil}<0.15$}\\
+\midrule
+\codigo{math.sqrt(var\_float)} & 1.27e-05 & 2.39e-07 & 0.0187 & 1.27e-05 & 2.39e-07 & \checkmark \\
+\codigo{abs(var\_int)} & 1.20e-05 & 2.89e-07 & 0.0241 & 1.20e-05 & 2.89e-07 & \checkmark \\
+\codigo{lst.append(a)} & 1.26e-05 & 3.16e-07 & 0.0251 & 1.26e-05 & 3.16e-07 & \checkmark \\
+\codigo{len(lst)} & 1.25e-05 & 2.14e-07 & 0.0171 & 1.25e-05 & 2.14e-07 & \checkmark \\
+\bottomrule
+\end{tabularx}}
+
+\newpage
+
+\secaotitulo{5}{Análise Crítica da Engenharia F.O.C.A. (Defesa dos Resultados)}
+
+\vspace{0.55cm}
+\textbf{Questão 1 (Acesso à Memória):}
+
+Comparando os resultados da tabela $\tau_a$, explique a diferença de tempo (se houver) entre operar uma
+atribuição de um valor constante literal ($\codigo{var}\leftarrow\codigo{cte}$) contra a atribuição copiando outra variável
+residente ($\codigo{var}\leftarrow\codigo{var}$). Onde o gargalo arquitetural se encontra no segundo caso?
+
+\vspace{0.55cm}
+
+\textbf{Questão 2 (ALU vs. FPU):}
+
+Ao cruzar os dados da tabela $\tau_o$, qual foi o impacto percentual no tempo de processamento ao realizar
+operações matemáticas puramente em Inteiros (\codigo{int}) contra as mesmas operações envolvendo Ponto
+Flutuante (\codigo{float})? A arquitetura do processador eleito favorece algum desses cálculos?
+
+Analisando os dados da tabela $\tau_o$, observa-se que operações de \textbf{soma e multiplicação} em ponto flutuante apresentam tempos semelhantes ou ligeiramente menores que suas contrapartes em inteiros. Por exemplo, \codigo{var\_float + var\_float} tem $\mu_{fil} = 6.66 \times 10^{-6}$s contra \codigo{var\_int + var\_int} com $\mu_{fil} = 1.04 \times 10^{-5}$s, e \codigo{var\_float * var\_float} com $\mu_{fil} = 1.02 \times 10^{-5}$s contra \codigo{var\_int * var\_int} com $\mu_{fil} = 1.01 \times 10^{-5}$s. Isso indica que a FPU (Floating-Point Unit) do Intel i7-1355U possui throughput comparável ou superior ao da ALU para essas operações, provavelmente devido à execução vetorial (AVX/SSE) e pipeline dedicado da unidade de ponto flutuante. No entanto, a \textbf{divisão em ponto flutuante} ($\mu_{fil} = 1.00 \times 10^{-5}$s) mostra custo similar à divisão inteira, e o \textbf{módulo inteiro} ($\mu_{fil} = 9.93 \times 10^{-6}$s) e a \textbf{subtração inteira} ($\mu_{fil} = 6.53 \times 10^{-6}$s) apresentam valores distintos. A arquitetura híbrida do processador, com ALU e FPU independentes, favorece operações de ponto flutuante em soma e multiplicação devido à capacidade de processamento paralelo por clock, mas não necessariamente em divisão, onde ambos os units apresentam latências similares.
+
+\vspace{0.55cm}
+
+\textbf{Questão 3 (Complexidade de Hardware):}
+
+Na tabela de operações matemáticas ($\tau_o$), ordene da instrução de hardware mais rápida para a mais
+lenta: Soma, Multiplicação e Divisão (Exata/Resto). A diferença empírica reflete a complexidade
+eletrônica/lógica dos circuitos somadores e multiplicadores reais?
+
+\vspace{0.55cm}
+
+\textbf{Questão 4 (Interferência Sistêmica e Filtragem):}
+
+Expliquem detalhadamente quais métricas melhoraram após a aplicação do filtro de \textit{outliers} (Percentil
+ou Desvio Padrão). Na visão de engenharia de software da equipe, quais eventos físicos da máquina
+ou lógicos do SO geraram as anomalias nas pontas do Histograma Bruto?
+
+A aplicação do filtro IQR (Percentis 25--75 com fator 3,0) teve impacto significativo nas métricas de estabilidade do experimento. Antes da filtragem, o Coeficiente de Variação ($CV_{bruto}$) de algumas operações ultrapassava 0,20 (como $\codigo{cte\_int == cte\_int}$ no estado inicial com CV $\approx$ 0,267), indicando ruído excessivo que inviabilizava a análise. Após a filtragem, todas as 25 operações apresentam $CV_{fil} < 0,15$, com a maioria dos valores concentrados entre 0,015 e 0,040.
+
+Os eventos físicos e lógicos que geraram as anomalias nas caudas do histograma bruto são:
+\begin{itemize}[leftmargin=0.8cm,itemsep=0.15cm]
+    \item \textbf{Scheduler do SO}: O escalonador de processos do Linux realiza trocas de contexto arbitrárias, pausando a thread do Python por milissegundos e reintroduzindo-a na fila de execução. Isso gera picos isolados de tempo muito acima da média.
+    \item \textbf{Garbage Collector (CPython)}: O mecanismo de coleta de lixo do CPython (geração cíclica reference counting + coletor geracional) pode ser acionado durante a execução, causando pausas não determinísticas proporcionais à quantidade de objetos alocados.
+    \item \textbf{Thermal Throttling}: A redução automática de clock da CPU devido ao acúmulo de calor durante as 300 repetições de medição causa variações na velocidade de execução das instruções.
+    \item \textbf{Cache Misses}: A displaceração de dados dos caches L1/L2/L3 para a RAM principal em acessos fora do padrão gera latências de 10--100$\times$ maiores que o acesso ao cache.
+    \item \textbf{Interrupts de hardware}: Eventos de dispositivos periféricos (teclado, mouse, rede, timer) interrompem a execução do processo, gerando anomalias esporádicas.
+\end{itemize}
+
+O filtro IQR é estruturalmente superior ao filtro paramétrico ($\mu \pm n\sigma$) porque utiliza a \textit{ordenação} dos dados, não a magnitude. Isso significa que um outlier extremo de 2 ms (causado por um scheduler preemptivo) não infla os limites de corte — o limiar é determinado pela posição ordinal (P25 e P75), não pela média. Consequentemente, o ruído residual é eliminado na primeira passagem, garantindo $CV < 0,15$ sem necessidade de iterações múltiplas.
+
+\vspace{0.55cm}
+
+\textbf{Questão 5 (Benchmarking e Desempenho no Pior Caso - \textit{FLOPS/IPS}):}
+
+Analisando todas as matrizes homologadas (estritamente as com $CV<0.15$), identifiquem a primitiva
+validada mais lenta de todo o experimento (maior tempo $\mu_{fil}$). Utilizando esse tempo de pior cenário,
+calculem o desempenho mínimo garantido do processador da equipe em FLOPS (\textit{Floating-Point Operations
+Per Second}) ou IPS (\textit{Instructions Per Second}), através da relação $1/\tau_{pior}$. Apresentem o cálculo
+e discutam brevemente como este \textit{benchmark} empírico de pior caso se compara com a frequência
+teórica (GHz) anunciada pelo fabricante.
+
+\end{document}

@@ -226,6 +226,31 @@ eletrônica/lógica dos circuitos somadores e multiplicadores reais?
 
 \vspace{0.55cm}
 
+A ordem das instruções de hardware, da mais rápida para a mais lenta, é \textbf{Soma} $<$
+\textbf{Multiplicação} $<$ \textbf{Divisão (Exata/Resto)}. Essa hierarquia é consequência direta do
+projeto eletrônico dos circuitos: o somador é o circuito mais simples da ALU — um par de meio-somadores
+resolve soma e \textit{carry} em poucos níveis de portas lógicas e, com \textit{carry-lookahead}, a
+latência cai para $O(\log n)$, fazendo a soma ser executada em $\approx$ 1 ciclo de clock. O multiplicador
+precisa somar $n$ parcelas parciais; mesmo com árvores de somadores (Wallace/Dadda) encurtando o caminho
+crítico, a latência sobe para algo entre 3 e 5 ciclos. A divisão é a mais cara de todas: os algoritmos
+\textit{restoring}/\textit{non-restoring} reconstroem o quociente bit a bit, repetindo subtração e
+deslocamento a cada estágio, o que leva a dezenas de ciclos — e a divisão exata (\codigo{//}) e o resto
+(\codigo{\%}) herdam esse mesmo custo. Ou seja, quanto maior o caminho crítico, mais lenta a operação, e é
+por isso que a soma sai primeiro e a divisão por último.
+
+Olhando a tabela $\tau_o$, porém, esse ordenamento não aparece de forma estatisticamente clara. Todos os
+valores caem numa faixa estreita: a soma inteira (\codigo{var\_int + var\_int}) mede $1{,}04 \times 10^{-5}$s,
+a multiplicação inteira $1{,}01 \times 10^{-5}$s, a divisão em ponto flutuante $1{,}00 \times 10^{-5}$s e o
+módulo ($\%$) $9{,}93 \times 10^{-6}$s — diferenças de poucos por cento, com intervalos de confiança
+sobrepostos e $CV_{fil} < 0{,}15$ em todos os casos. O motivo é que o tempo cronometrado é dominado pelo
+interpretador CPython: cada operação paga um custo fixo de $\approx 10\,\mu$s (dispatch do bytecode,
+manipulação de objetos, aritmética de precisão arbitrária em C), enquanto a diferença real entre somar e
+dividir é de algumas dezenas de ciclos — ou seja, nanossegundos. A diferença empírica, portanto, reflete
+predominantemente o \textit{overhead} da máquina virtual e não a complexidade eletrônica dos circuitos: o
+hardware realmente se comporta como previsto, mas essa diferença fica escondida abaixo do ruído da medição.
+
+\vspace{0.55cm}
+
 \textbf{Questão 4 (Interferência Sistêmica e Filtragem):}
 
 Expliquem detalhadamente quais métricas melhoraram após a aplicação do filtro de \textit{outliers} (Percentil
@@ -255,5 +280,36 @@ calculem o desempenho mínimo garantido do processador da equipe em FLOPS (\text
 Per Second}) ou IPS (\textit{Instructions Per Second}), através da relação $1/\tau_{pior}$. Apresentem o cálculo
 e discutam brevemente como este \textit{benchmark} empírico de pior caso se compara com a frequência
 teórica (GHz) anunciada pelo fabricante.
+
+\vspace{0.55cm}
+
+\textbf{Varrendo todas as matrizes homologadas ($CV_{fil} < 0{,}15$), incluindo a coleção de funções
+opacas $\tau_f$ (Seção 4.4, também aprovada pela equipe), o título de primitiva mais lenta de todo o
+experimento ficou com a raiz quadrada em ponto flutuante, \codigo{math.sqrt(var\_float)}, com
+$\mu_{fil} = 1{,}27 \times 10^{-5}$s. Se olharmos apenas as matrizes núcleo ($\tau_a$, $\tau_c$ e $\tau_o$),
+o pior caso seria a comparação relacional \codigo{var\_int > var\_int}, com $1{,}14 \times 10^{-5}$s — velha
+conhecida nossa, o que reforça que todas as primitivas vivem praticamente no mesmo patamar de tempo. Usando
+o pior cenário global, o desempenho mínimo garantido pela relação $1/\tau$ fica:
+
+\[
+\text{FLOPS}_{\text{min}} = \frac{1}{\tau_{\text{pior}}} = \frac{1}{1{,}2727 \times 10^{-5}\,\text{s}}
+\approx 78.572\ \text{FLOPS} \approx 7{,}86 \times 10^{4}\ \text{FLOPS}
+\]
+
+Em outras palavras, o \textit{setup} garante, na pior das hipóteses, pouco menos de 79 mil operações de
+ponto flutuante por segundo — esse é o valor mínimo que podemos homologar com os dados filtrados. Agora vem a
+comparação interessante: o fabricante anuncia o Intel i7-1355U com \textit{turbo} de até 5{,}0\,GHz, ou seja,
+$5{,}0 \times 10^{9}$ ciclos por segundo. Nosso resultado empírico é cerca de \textbf{63 mil vezes menor}
+($5{,}0 \times 10^{9} / 7{,}86 \times 10^{4} \approx 6{,}4 \times 10^{4}$). Essa diferença de quase cinco
+ordens de grandeza não quer dizer que o processador é lento — quer dizer que cada macro-primitiva Python
+esconde milhares de instruções nativas: o interpretador CPython despacha o \textit{bytecode}, mexe no modelo
+de objetos, e ainda, no caso das funções de biblioteca, faz uma chamada C, tudo somado ao custo do cronômetro
+e do escalonador do SO. Além disso, o processador dificilmente sustenta o \textit{turbo} de 5{,}0\,GHz durante
+uma medição contínua (limites de potência e térmicos entram em ação), e o IPC (\textit{Instructions Per
+Clock}) de um interpretador fica bem abaixo de 1,0, sofrendo com previsão de desvios e acessos à memória.
+No fim das contas, esse \textit{benchmark} de pior caso confirma que $\tau$ mede o preço das macro-primitivas
+na máquina virtual — não a capacidade bruta da ALU/FPU — e ainda serve como teto conservador para as análises
+de complexidade: nunca vamos observar desempenho pior do que $\approx 7{,}9 \times 10^{4}$ operações por
+segundo.}
 
 \end{document}

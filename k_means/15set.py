@@ -82,17 +82,50 @@ tempo_agrupamento = end_agrupamento - init_agrupamento
 print(f"Tempo do agrupamento para formar os cluters: {tempo_agrupamento}")
 print(f"Tamanho cluster 1: {len(CLUSTER[0])}\nTamanho cluster 2: {len(CLUSTER[1])}")
 
-tic = time.time()
-novo_centroid = []
+# K-means loop até convergir
+MAX_ITER = 1000
+iteracao = 0
+tempo_total_kmeans = 0
 
-for k in range(K):
-    S = np.array(3)
-    for px in CLUSTER[k]:
-        S += px
-    novo_centroid[k] = int(S / len(CLUSTER[k]))
+while iteracao < MAX_ITER:
+    iteracao += 1
+    tic = time.time()
 
-print(f'Novos centroides: {novo_centroid}')
-print(f'Tempo: {time.time() - tic}s')
+    # Atribuir cada pixel ao cluster mais próximo
+    CLUSTER = [[] for _ in range(K)]
+    for px in range(n_pixels):
+        v = np.array([faixa[0][px], faixa[1][px], faixa[2][px]])
+        distancias = [np.linalg.norm(v - np.array(centroid[k])) for k in range(K)]
+        cluster = np.argmin(distancias)
+        CLUSTER[cluster].append(px)
 
+    # Calcular novos centroides
+    novo_centroid = []
+    for k in range(K):
+        if len(CLUSTER[k]) > 0:
+            soma = np.zeros(3)
+            for px in CLUSTER[k]:
+                soma += np.array([faixa[0][px], faixa[1][px], faixa[2][px]])
+            novo_centroid.append((soma / len(CLUSTER[k])).astype(int).tolist())
+        else:
+            novo_centroid.append(centroid[k])
+
+    tempo_iter = time.time() - tic
+    tempo_total_kmeans += tempo_iter
+    print(f"Iterações: {iteracao}: centroides = {novo_centroid}")
+    print(f"Tempo parcial: {tempo_iter}s")
+
+    # Verificar convergência: centroide antigo == novo centroide
+    if np.array_equal(np.array(centroid), np.array(novo_centroid)):
+        print(f"Convergiu, centróides corretos encontrados. Iterações: {iteracao}")
+        print(f"Centroides finais: {novo_centroid}")
+        print(f"Tempo total K-means: {tempo_total_kmeans}s")
+        break
+
+    centroid = novo_centroid
+else:
+    print(f"Não convergiu após {MAX_ITER} iterações")
+    print(f"Centroides finais: {novo_centroid}")
+    print(f"Tempo total K-means: {tempo_total_kmeans}s")
 
 # Fim do C_init
